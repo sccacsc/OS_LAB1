@@ -35,8 +35,6 @@ void consumer(){
         consVal = v.front(); v.pop();
 
         std::cout << "Consumed: " << consVal << std::endl;
-
-        cv.notify_all();
     }
 
 }
