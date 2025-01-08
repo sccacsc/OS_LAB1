@@ -1,16 +1,13 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-
 #include <arpa/inet.h> 
 
 #include <unistd.h>
-
 #include <signal.h>
 #include <vector>
 #include <iostream>
 
-using namespace std;
 
 volatile sig_atomic_t wasSigHup = 0;
 
@@ -36,6 +33,8 @@ public:
 
     std::cout << "Server waiting...\n";
 
+    getMsg();
+
     }
     ~socketConnection(){ 
         closeConnection();
@@ -52,7 +51,7 @@ private:
     struct sockaddr_in server_address;
     struct sockaddr_in client_address;
     int msg;
-    vector<int> clients;
+    std::vector<int> clients;
 
 };
 
@@ -77,49 +76,56 @@ void socketConnection::getMsg(){
         FD_SET(server_sockfd, &fds);
 
         int maxFd = server_sockfd;
-
-        for(auto clientIt = clients.begin(); clientIt != clients.end(); clientIt++) {
+        for(auto clientIt = clients.begin(); clientIt != clients.end(); ++clientIt) {
             FD_SET(*clientIt, &fds);
-            maxFd = max(maxFd, *clientIt);
+            maxFd = std::max(maxFd, *clientIt);
         }
 
-        if (pselect(server_sockfd + 1, &fds, NULL, NULL, NULL, &origMask) == -1)
+        if (pselect(maxFd + 1, &fds, NULL, NULL, NULL, &origMask) == -1)
             if (errno == EINTR){
                 if(wasSigHup == 1) {
-                    cout << "Recieved SIGHUP signal\n";
+                    std::cout << "Recieved SIGHUP signal\n";
                     wasSigHup = 0;
                 }
+
                 continue;
             }
             else {
                 perror("pselect error");
                 break;
-                }
+            }
 
         if (FD_ISSET(server_sockfd, &fds)){
             client_len = sizeof(client_address);
             client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_address, &client_len);
+            std::cout << "Get connection\n";
             clients.push_back(client_sockfd);
-            client_sockfd = -1;
+            client_sockfd = 0;
 
             continue;
         }
-
-        for(auto clientIt = clients.begin(); clientIt != clients.end(); ++clientIt){
+        for(auto clientIt = clients.begin(); clientIt != clients.end();){
 
             if (FD_ISSET(*clientIt, &fds)){
-                recv(*clientIt, &msg, sizeof(msg), 0);
-                close(*clientIt);
-                clientIt = clients.erase(clientIt);
+                ssize_t check = recv(*clientIt, &msg, sizeof(msg), 0);
+                if(check <= 0) {
+                    if(check == 0)
+                        std::cout << "Client dissconected\n";
+                    close(*clientIt); 
+                    clientIt = clients.erase(clientIt);
 
+                    continue;
+                }
+                else std::cout << "Recievd msg: " << msg << std::endl;
+                ++clientIt;
             }
         }
-}
+    }
 }
 
 void socketConnection::closeConnection(){//закрытия сокетов
 
-    close(client_sockfd);
+    close(server_sockfd);
     for(auto clientIt = clients.begin(); clientIt != clients.end(); ++clientIt){
         close(*clientIt);
     }
