@@ -64,6 +64,11 @@ void socketConnection::getMsg(){
     sa.sa_flags |= SA_RESTART;
     sigaction(SIGHUP, &sa, NULL);
 
+    sigset_t blockedMask, origMask;
+    sigemptyset(&blockedMask);
+    sigaddset(&blockedMask, SIGHUP);
+    sigprocmask(SIG_BLOCK, &blockedMask, &origMask);
+
     while(1){
 
         fd_set fds;
@@ -71,9 +76,14 @@ void socketConnection::getMsg(){
 
         FD_SET(server_sockfd, &fds);
 
-        for(clientIt = clients.begin(); clientIt != clients.end(); clientIt++) 
+        int maxFd = server_sockfd;
+
+        for(auto clientIt = clients.begin(); clientIt != clients.end(); clientIt++) {
             FD_SET(*clientIt, &fds);
-        if (pselect(maxFd + 1, &fds, NULL, NULL, NULL, origSigMask) == -1)
+            maxFd = max(maxFd, *clientIt);
+        }
+
+        if (pselect(server_sockfd + 1, &fds, NULL, NULL, NULL, &origMask) == -1)
             if (errno == EINTR){
                 if(wasSigHup == 1) {
                     cout << "Recieved SIGHUP signal\n";
@@ -98,9 +108,9 @@ void socketConnection::getMsg(){
         for(auto clientIt = clients.begin(); clientIt != clients.end(); ++clientIt){
 
             if (FD_ISSET(*clientIt, &fds)){
-                recv(*clientIt, &msg, sizeof(msg), 0)
+                recv(*clientIt, &msg, sizeof(msg), 0);
                 close(*clientIt);
-                clintIt = cleints.erase(clientIt);
+                clientIt = clients.erase(clientIt);
 
             }
         }
